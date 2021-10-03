@@ -13,6 +13,6 @@ python test_lidc.py \
        --model batten-unet \
        --nclass 1 \
        --task-num 0 \
-       --num_sample 50 \
-       --model_path /data/ssd/wanghao/bOEMD_run/ \
+       --num-sample 50 \
+       --model-path /data/ssd/wanghao/bOEMD_run/lidc/battn_unet/experiment_14/checkpoint.pth.tar \
        --save-path /data/ssd/wanghao/bOEMD_run

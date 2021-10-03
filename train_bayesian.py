@@ -18,25 +18,14 @@ class Bayeisan_Trainer(object):
     # Define Saver
     def __init__(self, args):
         self.args = args
-        self.saver = Saver(args)
-        self.saver.save_experiment_config()
 
-        # Define Tensorboard Summary
-        self.summary = TensorboardSummary(self.saver.experiment_dir)
-        self.writer = self.summary.create_summary()
-        # Define beta
-        self.beta_type = args.beta_type
-
-        # Define Dataloader
+         # Define Dataloader
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass, \
         self.train_length = make_data_loader(args,
                                              **kwargs)
 
         print('number of classes: ', self.nclass)
-
-        # Define number of epochs
-        self.num_epoch = args.epochs
 
         # Define the parameters for the sample evaluation
         self.num_sample = args.num_sample
@@ -48,27 +37,45 @@ class Bayeisan_Trainer(object):
             model = build_model(args, args.nchannels, self.nclass, args.model)
         else:
             model = build_transfer_learning_model(args, args.nchannels, self.nclass, args.pretrained)
+        
+        if  self.args.is_train:
+            # Define Save
+            self.saver = Saver(args)
+            self.saver.save_experiment_config()
 
-        # set up the learning rate
-        train_params = [{'params': model.parameters(), 'lr': args.lr}]
+            # Define Tensorboard Summary
+            self.summary = TensorboardSummary(self.saver.experiment_dir)
+            self.writer = self.summary.create_summary()
+        
+            # Define beta
+            self.beta_type = args.beta_type
 
-        # Define Optimizer
-        optimizer = torch.optim.SGD(train_params, momentum=args.momentum,
+            # Define number of epochs
+            self.num_epoch = args.epochs
+
+       
+
+            # set up the learning rate
+            train_params = [{'params': model.parameters(), 'lr': args.lr}]
+
+            # Define Optimizer
+            optimizer = torch.optim.SGD(train_params, momentum=args.momentum,
                                     weight_decay=args.weight_decay, nesterov=args.nesterov)
 
-        # Define Criterion
+            # Define Criterion
 
-        self.criterion = SegmentationLosses(nclass=self.nclass, weight=None, cuda=args.cuda).build_loss(
-            mode=args.loss_type)
+            self.criterion = SegmentationLosses(nclass=self.nclass, weight=None, cuda=args.cuda).build_loss(
+                mode=args.loss_type)
 
-        self.model, self.optimizer = model, optimizer
+            self.optimizer = optimizer
+            # Define lr scheduler
+            self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
+                                      args.epochs, len(self.train_loader))
 
+        # Model 
+        self.model = model        
         # Define Evaluator
         self.evaluator = Evaluator(self.nclass, dice=True, loss=args.loss_type)
-
-        # Define lr scheduler
-        self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
-                                      args.epochs, len(self.train_loader))
 
         # Using cuda
         if args.cuda:
@@ -214,7 +221,10 @@ class Bayeisan_Trainer(object):
         :return:
         """
         checkpoint = torch.load(path, map_location=torch.device("cuda" if self.args.cuda else "cpu"))
-        self.model.load_state_dict(checkpoint["state_dict"], strict=True)
+        if self.args.cuda:
+            self.model.module.load_state_dict(checkpoint["state_dict"], strict=True)
+        else:
+            self.model.load_state_dict(checkpoint['state_dict'], strict = True)
 
         self.model.eval()
         self.evaluator.reset()
@@ -241,8 +251,8 @@ class Bayeisan_Trainer(object):
                         predictions[j] = output
                         kl_losses[j] = kl
 
-            mean_out = torch.mean(predictions, dim=0, keepdim=False)
-            mean_kl_loss = torch.mean(kl_losses)
+            mean_out = torch.mean(predictions.float(), dim=0, keepdim=False)
+            mean_kl_loss = torch.mean(kl_losses.float())
 
             if self.args.cuda:
                 test_loss = metrics.dice_coef(mean_out, target.cpu(), self.nclass)
@@ -269,13 +279,14 @@ class Bayeisan_Trainer(object):
         print("Sampling GED score {}".format(ged))
         print("Sampling diversity {}".format(sd))
         print("Sampling accuracy {}".format(sa))
-        print('Sampling Loss: %.3f' % (test_loss))
+        print('Sampling Dice: %.3f' % (test_loss))
 
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch Bayesian UNet Training")
     parser.add_argument('--save-path', type=str, default='run')
-
+    parser.add_argument('--is-train', action='store_true', default=True,
+                        help='Training script for Testing script')
     parser.add_argument('--dataset', type=str, default='uncertain-brats',
                         choices=['brats', 'uncertain-brats', 'uncertain-brain-growth', 'uncertain-kidney',
                                  'uncertain-prostate', 'lidc', 'lidc-rand'],

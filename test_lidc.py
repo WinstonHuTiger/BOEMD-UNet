@@ -5,7 +5,8 @@ import numpy as np
 def main():
     parser = argparse.ArgumentParser(description="PyTorch Bayesian UNet Test")
     parser.add_argument('--save-path', type=str, default='run')
-
+    parser.add_argument('--is-train', action='store_true', default=False,
+                        help='Training script for Testing script')
     parser.add_argument('--dataset', type=str, default='uncertain-brats',
                         choices=['brats', 'uncertain-brats', 'uncertain-brain-growth', 'uncertain-kidney',
                                  'uncertain-prostate', 'lidc', 'lidc-rand'],
@@ -105,3 +106,5 @@ def main():
     trainer.test(args.model_path)
 
     trainer.writer.close()
+if __name__ == "__main__":
+    main()
